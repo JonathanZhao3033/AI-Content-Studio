@@ -14,44 +14,32 @@
 
 If you love this project and want to support its development, please consider helping out on **[Patreon](https://www.patreon.com/c/naqashafzal)** or follow my journey on **[Instagram](https://www.instagram.com/naqashafzal/)**!
 
-## 🌟 Key Features (Complete Suite)
+## 🌟 Key Features (Next-Gen v2.0 Studio)
 
-AI Content Studio has been massively upgraded into a full suite of AI content generation tools. Here is everything you can do:
+AI Content Studio has been completely upgraded into an advanced, autonomous AI creative production and video editing platform:
 
-### ✂️ Magic AI Clipper (The Ultimate OpusClip Clone)
-Convert any long-form YouTube video into viral, ready-to-post short-form content (TikToks, Instagram Reels, YouTube Shorts) in minutes.
-- **Smart AI Curation:** Uses Google's Gemini AI and OpenAI's Whisper transcriptions to analyze the video and automatically find the most engaging highlights.
-- **Automated Framing:** Automatically crops landscape (16:9) videos into vertical (9:16) format using advanced FFmpeg processing.
-- **Dynamic Captions:** Burns professional, highly-accurate subtitles directly into the video for maximum viewer retention.
-- **Custom Styling:** Fully control your caption aesthetics before generating. Choose your font (Arial, Roboto, Impact), dial in the exact pixel size, and apply custom color themes (e.g., Clean White, Viral Yellow, Neon Cyberpunk).
+### 🎬 Autonomous AI Director & Visual Storyboard
+- **Supervisory AI Orchestrator:** Dynamic agent team (`StrategyAgent`, `TrendDiscoveryAgent`, `ResearchAgent`, `CreativeDirectorAgent`, `QualityAssuranceAgent`, `LearningAgent`).
+- **Self-Healing QA Retry Loops:** Automatically critiques generated scripts. If QA score is below 80, the director autonomously rewrites weak scenes based on actionable critique before initiating renders.
+- **Interactive Scene Cards & Selective Regeneration:** Lock approved scenes while selectively regenerating individual scenes with custom user instructions (e.g. *"Change to a drone wide establishing shot"*).
 
-### 🎙️ AI Podcast & Director Studio
-Generate complete, multi-speaker podcast videos entirely from a single text prompt.
-- **AI Director Engine:** AI dynamically writes conversational, engaging podcast scripts tailored to your niche.
-- **Voice Synthesis:** Realistic text-to-speech engine brings the hosts to life with emotion and clarity.
-- **Visuals & Assembly:** Automatically layers high-quality audio over dynamic background footage for a complete audio-visual experience.
+### ✂️ Magic AI Clipper 2.0 (Multimodal OpusClip Engine)
+- **Multimodal Hotspot Fusion:** Combines Whisper transcriptions with **audio RMS volume peaks** (detecting vocal excitement, applause, punchlines) and **OpenCV HSV histogram cuts** to score and rank clips on genuine audio-visual virality.
+- **Active Speaker Framing with Hysteresis:** Face detection with intelligent shot hysteresis (minimum 1.5s interval) prevents camera shaking and jitter on minor head movements.
+- **B-Roll Auto-Injection:** Automatically pulls topic-relevant visual B-roll from Pixabay for high-retention visual pacing.
 
-### 🧠 AI Explainer Videos
-- Quickly generate engaging, "faceless" explainer videos for educational or storytelling niches.
-- The AI handles script generation, voiceovers, and compiles it all with relevant background media.
+### 🎨 Intelligent Style Engine & Reference Video Cloner
+- **Clone Editing Styles:** Upload any reference video from creators like MrBeast, Alex Hormozi, or Vox. The engine uses computer vision to extract shot durations, cut frequency, and caption animations into reusable style profiles.
+- **Live Brand Kit Studio:** Real-time 9:16 short preview with custom dual-accent color palettes, typography options, watermark placement/opacity, and stinger intros.
 
-### 🚀 Campaign & Social Media Publisher
-- **Automated Campaigns:** Schedule and queue up bulk content generation. Set it and forget it while the AI builds your content calendar.
-- **Social Media Integration:** Connect your accounts and auto-publish directly from the dashboard to platforms like YouTube Shorts, Instagram Reels, and TikTok.
+### 🔊 Studio Audio Mastering & Urdu / Roman Urdu Support
+- **Broadcast Loudness Normalization:** Integrated FFmpeg EBU R128 `loudnorm=I=-14:TP=-1.5:LRA=11` filter across video renders, aligning output with YouTube and TikTok broadcast targets.
+- **Phonetic Normalization:** Full Urdu Unicode character normalization and Roman Urdu phonetic dictionary (e.g. *kese -> kaisay*, *kyun -> kyoon*, *mujhe -> mujhey*, *dunya -> duniya*) for natural neural TTS pronunciation.
 
-### 🎨 VideoFX Studio & Timeline Editor
-- **Advanced Editing:** A powerful timeline editor built directly into the UI. Adjust clip timings, fine-tune subtitle placement, and customize your cuts manually if you don't want to rely 100% on the AI.
-- **VideoFX Integration:** Seamlessly integrate with VideoFX generators to create stunning B-roll and AI video snippets based on text prompts.
-
-### 🛡️ Brand Kit & Styling
-- Maintain visual consistency across all your videos.
-- Save custom fonts, color palettes, logo watermarks, and specific text styles in your Brand Settings so the AI uses them automatically on every export.
-
-### 📚 History & Projects Dashboard
-- Easily browse your previously generated AI Podcasts, Clipper shorts, and campaigns.
-- Watch generated videos directly in the browser via a beautifully embedded video player.
-- 1-click downloads for videos and raw text scripts.
-- Safely delete and manage old projects to free up workspace storage.
+### ⚡ Resilient SQLite Queue & Multi-Model Gateway
+- **Persistent Durable Queue:** Tasks survive server restarts; recovers interrupted rendering jobs with stage-by-stage checkpoints.
+- **Multi-Model Routing:** Unified provider gateway supporting Google Gemini, OpenAI-compatible APIs, and local Ollama with automatic failover.
+- **Zero Mock Exploits:** Real OAuth token management and manual publishing packages.
 
 ## 🔋 How to Use Tutorial
 🔥 **NEW FULL DETAILED VIDEO TUTORIAL COMING SOON!** 🔥
@@ -125,7 +113,15 @@ Before running the application, ensure you have the following installed on your 
 
 ### Running the Application
 
-You need to run both the backend and frontend servers simultaneously.
+#### ⚡ 1-Click Launch (Windows - Recommended)
+Simply run or double-click **`start.bat`**:
+```cmd
+start.bat
+```
+The automated launcher will verify Python 3.10+, Node.js 18+, and FFmpeg, initialize storage folders, activate `.venv`, check dependencies, launch both server consoles, and automatically open your browser to `http://localhost:3000`!
+
+#### 🛠️ Manual Launch (All Platforms)
+You can run both servers manually in separate terminal windows:
 
 **1. Start the Backend API (from the root directory):**
 ```bash
