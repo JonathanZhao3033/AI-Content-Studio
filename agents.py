@@ -116,16 +116,28 @@ class WriterAgent(BaseAgent):
 
     def generate_audio(self, script_file, output_dir):
         self.set_status("Generating Audio...", "running")
-        self.log("Generating Voiceover audio...")
+        self.log("Generating Voiceover audio with phonetic & loudness normalization...")
         with open(script_file, "r", encoding="utf-8") as f:
             script = f.read()
             
+        from pipeline import sanitize_for_tts, normalize_audio_loudness
+        clean_script = sanitize_for_tts(script)
+        
         google_client = GoogleClient(self.config)
+        raw_audio = os.path.join(output_dir, "voiceover_raw.wav")
         audio_file = os.path.join(output_dir, "voiceover.wav")
-        google_client.generate_tts(script, audio_file, self.config)
+        google_client.generate_tts(clean_script, raw_audio, self.config)
+        
+        # Apply broadcast loudnorm filter (-14 LUFS)
+        normalize_audio_loudness(raw_audio, audio_file)
+        if os.path.exists(raw_audio) and raw_audio != audio_file:
+            try:
+                os.remove(raw_audio)
+            except Exception:
+                pass
         
         self.set_status("Audio Done", "done")
-        self.log("Writer Agent finished.")
+        self.log("Writer Agent finished audio mastering.")
         return audio_file
 
     def run(self, topic, output_dir):

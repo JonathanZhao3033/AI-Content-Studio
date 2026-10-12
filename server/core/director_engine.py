@@ -127,14 +127,13 @@ def run_director_pipeline(url: str, job_id: str, update_job_callback, remove_sil
                             adelays.append(f"[sfx{idx}]")
                         
                         amix_inputs = "".join(adelays)
-                        filter_complex += f"[0:a]{amix_inputs}amix=inputs={len(sfx_times)+1}:duration=first:dropout_transition=2[aout]"
+                        filter_complex += f"[0:a]{amix_inputs}amix=inputs={len(sfx_times)+1}:duration=first:dropout_transition=2,loudnorm=I=-14:TP=-1.5:LRA=11[aout]"
                     else:
-                        filter_complex += "[0:a]acopy[aout]"
+                        filter_complex += "[0:a]loudnorm=I=-14:TP=-1.5:LRA=11[aout]"
                 else:
-                    filter_complex += "[0:a]acopy[aout]"
+                    filter_complex += "[0:a]loudnorm=I=-14:TP=-1.5:LRA=11[aout]"
                 
-                # Fallback cleanups in case acopy doesn't exist
-                filter_complex = filter_complex.replace("[0:a]acopy[aout]", "[0:a]anull[aout]")
+                # Fallback cleanups in case filters need replacement
                 filter_complex = filter_complex.replace("[0:v]copy[vout]", "[0:v]null[vout]")
                 
                 final_magic_path = os.path.join(output_dir, "magic_master.mp4")

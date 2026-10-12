@@ -116,7 +116,9 @@ async def websocket_endpoint(websocket: WebSocket, job_id: str):
 @router.get("/viral-topics")
 def get_viral_topics():
     config = load_config()
-    trend_agent = TrendAgent(config, JobUI(job_id), "TrendAgent")
+    # Standalone topic discovery does not depend on a job context
+    topic_logger_ui = JobUI("topic_discovery")
+    trend_agent = TrendAgent(config, topic_logger_ui, "TrendAgent")
     topics = trend_agent.find_viral_topics()
     return {"topics": topics}
 
@@ -134,7 +136,8 @@ def cancel_job(job_id: str):
 
 @router.get("/settings")
 def get_app_settings():
-    return load_config()
+    # Never expose unmasked credentials in settings read responses
+    return load_config(masked=True)
 
 @router.post("/settings")
 def update_app_settings(new_config: Dict[str, Any]):
@@ -226,18 +229,42 @@ def get_generation_history():
 @router.delete("/history/{project_id}")
 def delete_project(project_id: str):
     import shutil
-    if project_id.startswith("explainer_"):
-        folder_path = os.path.join("outputs", project_id)
+    # Prevent directory traversal attacks
+    clean_id = os.path.basename(project_id.strip())
+    if clean_id != project_id or ".." in project_id or "/" in project_id or "\\" in project_id:
+        raise HTTPException(status_code=400, detail="Invalid project ID format.")
+
+    if clean_id.startswith("explainer_"):
+        base_dir = os.path.abspath("outputs")
     else:
-        folder_path = os.path.join("workspace", project_id)
+        base_dir = os.path.abspath("workspace")
+
+    folder_path = os.path.abspath(os.path.join(base_dir, clean_id))
+    if not folder_path.startswith(base_dir):
+        raise HTTPException(status_code=403, detail="Access denied.")
         
-    if os.path.exists(folder_path):
+    if os.path.exists(folder_path) and os.path.isdir(folder_path):
         shutil.rmtree(folder_path)
         return {"message": "Project deleted."}
     raise HTTPException(status_code=404, detail="Project not found")
 
 @router.get("/media")
 def serve_media_file(path: str = Query(...)):
-    if os.path.exists(path):
-        return FileResponse(path)
-    raise HTTPException(status_code=404, detail="Media file not found.")
+    # Validate containment within permitted media directories
+    clean_path = os.path.abspath(path.strip())
+    allowed_roots = [
+        os.path.abspath("workspace"),
+        os.path.abspath("outputs"),
+        os.path.abspath("agent_workspace"),
+        os.path.abspath("assets"),
+        os.path.abspath("videofx_outputs")
+    ]
+    is_safe = any(
+        clean_path.startswith(root) and (len(clean_path) == len(root) or clean_path[len(root)] in (os.sep, '/'))
+        for root in allowed_roots
+    )
+    if not is_safe:
+        raise HTTPException(status_code=403, detail="Access denied: File outside permitted media workspace.")
+    if not os.path.exists(clean_path) or not os.path.isfile(clean_path):
+        raise HTTPException(status_code=404, detail="Media file not found.")
+    return FileResponse(clean_path)

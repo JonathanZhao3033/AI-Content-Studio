@@ -1,6 +1,7 @@
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException
 from pydantic import BaseModel
 import traceback
+import re
 
 from server.core.queue import create_job, submit_to_queue, update_job, manager
 from pipeline_shorts import analyze_video, render_youtube_clips
@@ -52,13 +53,28 @@ def run_analyze_local_task(job_id: str, video_path: str, num_clips: int):
         update_job(job_id, status="failed", error=str(e))
         manager.broadcast(job_id, {"type": "log", "message": f"Error: {str(e)}", "progress": 1.0})
 
+ALLOWED_VIDEO_EXTENSIONS = {".mp4", ".mov", ".mkv", ".webm", ".avi", ".m4v"}
+
 @router.post("/analyze_local")
 async def start_analyze_local(num_clips: int = Form(...), file: UploadFile = File(...)):
-    job_id = create_job(f"clipper_local_{uuid.uuid4().hex[:6]}")
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="Uploaded file must have a filename.")
     
-    output_dir = f"workspace/clipper_{job_id}"
+    ext = os.path.splitext(file.filename)[1].lower()
+    if ext not in ALLOWED_VIDEO_EXTENSIONS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported file format '{ext}'. Allowed formats: {', '.join(ALLOWED_VIDEO_EXTENSIONS)}"
+        )
+        
+    job_id = create_job(f"clipper_local_{uuid.uuid4().hex[:6]}")
+    output_dir = os.path.abspath(f"workspace/clipper_{job_id}")
     os.makedirs(output_dir, exist_ok=True)
-    video_path = os.path.join(output_dir, file.filename)
+
+    # Sanitize filename and avoid path traversal
+    safe_basename = re.sub(r'[^a-zA-Z0-9_\-.]', '_', os.path.basename(file.filename))
+    safe_filename = f"upload_{uuid.uuid4().hex[:8]}_{safe_basename}"
+    video_path = os.path.join(output_dir, safe_filename)
     
     with open(video_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)

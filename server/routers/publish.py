@@ -1,7 +1,6 @@
 from fastapi import APIRouter, HTTPException, Form
 from pydantic import BaseModel
 import os
-import pickle
 import traceback
 import json
 
@@ -92,10 +91,15 @@ def publish_to_youtube(req: PublishRequest):
         from googleapiclient.discovery import build
         from googleapiclient.http import MediaFileUpload
         
+        from google.oauth2.credentials import Credentials
+
         credentials = None
-        if os.path.exists("token.pickle"):
-            with open("token.pickle", "rb") as token:
-                credentials = pickle.load(token)
+        token_json_path = "token.json"
+        if os.path.exists(token_json_path):
+            try:
+                credentials = Credentials.from_authorized_user_file(token_json_path, scopes=["https://www.googleapis.com/auth/youtube.upload"])
+            except Exception as e:
+                print(f"Failed to load token.json: {e}")
                 
         if not credentials or not credentials.valid:
             if credentials and credentials.expired and credentials.refresh_token:
@@ -106,12 +110,9 @@ def publish_to_youtube(req: PublishRequest):
                     scopes=["https://www.googleapis.com/auth/youtube.upload"],
                     redirect_uri='http://localhost:8080/'
                 )
-                # This will open a browser window on the server.
-                # In a real headless server, you'd need a different OAuth flow.
-                # For this local desktop app, run_local_server is fine.
                 credentials = flow.run_local_server(port=8080)
-            with open("token.pickle", "wb") as f:
-                pickle.dump(credentials, f)
+            with open(token_json_path, "w", encoding="utf-8") as f:
+                f.write(credentials.to_json())
                 
         youtube = build("youtube", "v3", credentials=credentials)
         

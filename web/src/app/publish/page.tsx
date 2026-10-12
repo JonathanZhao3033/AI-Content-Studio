@@ -1,7 +1,25 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Film, Upload, CheckCircle2, Play, MonitorPlay, FileText, Loader2, Tag, Info, Youtube, Instagram, Smartphone } from "lucide-react";
+import { Film, Upload, CheckCircle2, Play, MonitorPlay, FileText, Loader2, Tag, Info, Smartphone } from "lucide-react";
+
+function YoutubeIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="currentColor">
+      <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
+    </svg>
+  );
+}
+
+function InstagramIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect width="20" height="20" x="2" y="2" rx="5" ry="5"/>
+      <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/>
+      <line x1="17.5" x2="17.51" y1="6.5" y2="6.5"/>
+    </svg>
+  );
+}
 
 export default function PublishPage() {
   const [projects, setProjects] = useState<any[]>([]);
@@ -186,7 +204,7 @@ export default function PublishPage() {
                    </label>
                    <div className="grid grid-cols-3 gap-3">
                       <button type="button" onClick={() => setSelectedPlatforms(p => ({...p, youtube: !p.youtube}))} className={`flex flex-col items-center gap-2 p-3 rounded-lg border ${selectedPlatforms.youtube ? 'bg-red-500/20 border-red-500/50 text-white' : 'bg-white/5 border-white/10 text-zinc-500 hover:bg-white/10'}`}>
-                         <Youtube className="h-6 w-6" />
+                         <YoutubeIcon className="h-6 w-6" />
                          <span className="text-[10px] font-bold">YouTube</span>
                          {socialStatus.youtube ? <span className="text-[8px] text-emerald-400 bg-emerald-500/20 px-1.5 rounded-sm">Connected</span> : <span className="text-[8px] text-zinc-500">Not Connected</span>}
                       </button>
@@ -196,7 +214,7 @@ export default function PublishPage() {
                          {socialStatus.tiktok ? <span className="text-[8px] text-emerald-400 bg-emerald-500/20 px-1.5 rounded-sm">Connected</span> : <span className="text-[8px] text-zinc-500">Not Connected</span>}
                       </button>
                       <button type="button" onClick={() => setSelectedPlatforms(p => ({...p, instagram: !p.instagram}))} className={`flex flex-col items-center gap-2 p-3 rounded-lg border ${selectedPlatforms.instagram ? 'bg-pink-500/20 border-pink-500/50 text-white' : 'bg-white/5 border-white/10 text-zinc-500 hover:bg-white/10'}`}>
-                         <Instagram className="h-6 w-6" />
+                         <InstagramIcon className="h-6 w-6" />
                          <span className="text-[10px] font-bold">Instagram</span>
                          {socialStatus.instagram ? <span className="text-[8px] text-emerald-400 bg-emerald-500/20 px-1.5 rounded-sm">Connected</span> : <span className="text-[8px] text-zinc-500">Not Connected</span>}
                       </button>

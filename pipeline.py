@@ -53,8 +53,68 @@ def format_timestamp(seconds: float) -> str:
     seconds = total_seconds % 60
     return f"{minutes:02}:{seconds:02}"
 
+# Phonetic normalization map for Roman Urdu -> clear TTS pronunciation
+URDU_ROMAN_PHONETIC_MAP = {
+    r"\baap\b": "aap",
+    r"\bkese\b": "kaisay",
+    r"\bkaise\b": "kaisay",
+    r"\bkesay\b": "kaisay",
+    r"\bkyun\b": "kyoon",
+    r"\bkyon\b": "kyoon",
+    r"\bkyu\b": "kyoon",
+    r"\bbohot\b": "bohat",
+    r"\bboht\b": "bohat",
+    r"\bacha\b": "ach-cha",
+    r"\bachha\b": "ach-cha",
+    r"\bshukriya\b": "shookriya",
+    r"\bmujhe\b": "mujhey",
+    r"\btumhe\b": "tumhey",
+    r"\buse\b": "ussey",
+    r"\bpehle\b": "pehlay",
+    r"\bkhatam\b": "khatum",
+    r"\bzaroorat\b": "zaroorat",
+    r"\bdunya\b": "duniya",
+    r"\bwajah\b": "wujah",
+    r"\blekin\b": "laikin",
+    r"\byahan\b": "yahaan",
+    r"\bwahan\b": "wahaan",
+    r"\bkahan\b": "kahaan",
+    r"\bchahiye\b": "chahiye",
+    r"\bsamajh\b": "sumujh",
+}
+
+# Arabic Unicode characters normalization for Urdu script
+URDU_CHAR_MAP = {
+    '\u064A': '\u06CC',  # Arabic Yeh -> Urdu Yeh (ی)
+    '\u0643': '\u06A9',  # Arabic Kaf -> Urdu Keheh (ک)
+    '\u0629': '\u06C1',  # Teh Marbuta -> Heh (ہ)
+    '\u0649': '\u06CC',  # Alef Maksura -> Yeh (ی)
+    '\u064B': '',        # Diacritics removal for cleaner TTS
+    '\u064C': '',
+    '\u064D': '',
+    '\u064E': '',
+    '\u064F': '',
+    '\u0650': '',
+    '\u0651': '',
+    '\u0652': '',
+    '\u200c': ' ',       # Zero-width non-joiner -> space
+    '\u200d': '',        # Zero-width joiner -> remove
+}
+
+def normalize_urdu_and_roman_urdu(text: str) -> str:
+    """Normalizes Arabic/Urdu unicode chars and Roman Urdu phonetic words for seamless TTS pronunciation."""
+    if not text:
+        return text
+    # 1. Unicode character mapping
+    for old_ch, new_ch in URDU_CHAR_MAP.items():
+        text = text.replace(old_ch, new_ch)
+    # 2. Roman Urdu regex replacements
+    for pattern, replacement in URDU_ROMAN_PHONETIC_MAP.items():
+        text = re.sub(pattern, replacement, text, flags=re.IGNORECASE)
+    return text
+
 def sanitize_for_tts(text: str) -> str:
-    """Removes emojis and normalizes text for TTS processing."""
+    """Removes emojis, applies Urdu/Roman Urdu phonetics, and normalizes text for TTS processing."""
     emoji_pattern = re.compile(
         "["
         "\U0001F600-\U0001F64F"  # emoticons
@@ -71,13 +131,29 @@ def sanitize_for_tts(text: str) -> str:
         "]+", re.UNICODE)
     text = emoji_pattern.sub(r'', text)
     text = unicodedata.normalize("NFKC", text)
+    text = normalize_urdu_and_roman_urdu(text)
     text = text.replace('*', '')
     text = re.sub(r'[ \t\r\f\v]+', ' ', text).replace('\xa0', ' ').strip()
     return text.replace('“', '"').replace('”', '"').replace('’', "'").replace('—', '-').replace('–', '-')
 
+def normalize_audio_loudness(input_audio_path: str, output_audio_path: str, target_i: float = -14.0, target_tp: float = -1.5, target_lra: float = 11.0) -> str:
+    """Normalizes audio loudness to EBU R128 / YouTube standard (-14 LUFS, TP -1.5dB) using FFmpeg loudnorm filter."""
+    try:
+        cmd = [
+            "ffmpeg", "-y", "-i", input_audio_path,
+            "-af", f"loudnorm=I={target_i}:TP={target_tp}:LRA={target_lra}",
+            "-c:a", "libmp3lame" if output_audio_path.endswith(".mp3") else "pcm_s16le",
+            output_audio_path
+        ]
+        subprocess.run(cmd, check=True, capture_output=True)
+        return output_audio_path
+    except Exception as e:
+        logging.warning(f"Audio loudnorm failed ({e}), keeping original audio file")
+        return input_audio_path
+
 def mix_audio_with_music(podcast_path, music_path, output_path, music_volume_db=-15):
-    """Mixes a podcast audio file with a background music file."""
-    logging.info("🎵 Mixing background music...")
+    """Mixes podcast audio with background music, applying loudness normalization."""
+    logging.info("🎵 Mixing background music with loudness mastering...")
     try:
         podcast_audio = AudioSegment.from_file(podcast_path)
         music_audio = AudioSegment.from_file(music_path)
@@ -86,8 +162,19 @@ def mix_audio_with_music(podcast_path, music_path, output_path, music_volume_db=
             music_audio = music_audio * (len(podcast_audio) // len(music_audio) + 1)
         music_audio = music_audio[:len(podcast_audio)]
         mixed_audio = podcast_audio.overlay(music_audio, position=0)
-        mixed_audio.export(output_path, format="mp3")
-        logging.info(f"✅ Audio mixed and saved to {output_path}")
+        
+        temp_mix = output_path.replace(".mp3", "_raw.mp3")
+        mixed_audio.export(temp_mix, format="mp3")
+        
+        # Apply broadcast loudnorm filter
+        normalize_audio_loudness(temp_mix, output_path)
+        if os.path.exists(temp_mix) and temp_mix != output_path:
+            try:
+                os.remove(temp_mix)
+            except Exception:
+                pass
+                
+        logging.info(f"✅ Audio mixed & normalized to {output_path}")
         return output_path
     except Exception as e:
         logging.error(f"❌ Error mixing audio: {e}")

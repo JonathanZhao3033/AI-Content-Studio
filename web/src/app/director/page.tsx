@@ -1,57 +1,138 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Film, Upload, Loader2, Play, Download, Wand2, Settings2, FileAudio } from "lucide-react";
+import { 
+  Film, Upload, Loader2, Play, Download, Wand2, Settings2, FileAudio, 
+  Lock, Unlock, RefreshCw, CheckCircle2, Sparkles, Clock, Sliders, Flame, 
+  ChevronRight, AlertCircle, Save 
+} from "lucide-react";
+
+interface Scene {
+  scene_number: number;
+  duration_estimate_sec: number;
+  speaker: string;
+  narration: string;
+  visual_description: string;
+  camera_framing: string;
+  broll_query?: string;
+  music_cue?: string;
+  sfx_cue?: string;
+  locked?: boolean;
+}
+
+interface StoryboardPlan {
+  title: string;
+  hook: string;
+  duration: number;
+  style: string;
+  scenes: Scene[];
+  research_summary?: string;
+  qa_score?: number;
+  qa_passed?: boolean;
+}
 
 export default function DirectorModePage() {
-  const [url, setUrl] = useState("");
-  const [status, setStatus] = useState("idle");
-  const [jobId, setJobId] = useState<string | null>(null);
-  const [progress, setProgress] = useState(0);
-  const [logMsg, setLogMsg] = useState("");
-  const [logs, setLogs] = useState<{message: string, time: string}[]>([]);
-  const [finalVideo, setFinalVideo] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<"storyboard" | "raw">("storyboard");
   
-  // Settings
+  // Storyboard Director State
+  const [topic, setTopic] = useState("");
+  const [targetDuration, setTargetDuration] = useState(45);
+  const [selectedStyle, setSelectedStyle] = useState("Cinematic Documentary");
+  const [planningStatus, setPlanningStatus] = useState<"idle" | "planning" | "ready" | "failed">("idle");
+  const [planJobId, setPlanJobId] = useState<string | null>(null);
+  const [storyboard, setStoryboard] = useState<StoryboardPlan | null>(null);
+  const [planProgress, setPlanProgress] = useState(0);
+  const [planLogMsg, setPlanLogMsg] = useState("");
+  const [planLogs, setPlanLogs] = useState<{message: string, time: string}[]>([]);
+  const [regeneratingSceneNum, setRegeneratingSceneNum] = useState<number | null>(null);
+  const [sceneInstruction, setSceneInstruction] = useState("");
+  const [activeInstructionModalScene, setActiveInstructionModalScene] = useState<number | null>(null);
+  const [savingScenes, setSavingScenes] = useState(false);
+  const [trends, setTrends] = useState<{title: string, opportunity_score: number}[]>([]);
+
+  // Raw Footage Mode State
+  const [url, setUrl] = useState("");
+  const [rawStatus, setRawStatus] = useState("idle");
+  const [rawJobId, setRawJobId] = useState<string | null>(null);
+  const [rawProgress, setRawProgress] = useState(0);
+  const [rawLogMsg, setRawLogMsg] = useState("");
+  const [rawLogs, setRawLogs] = useState<{message: string, time: string}[]>([]);
+  const [finalVideo, setFinalVideo] = useState<string | null>(null);
   const [removeSilence, setRemoveSilence] = useState(true);
   const [addPunchIns, setAddPunchIns] = useState(true);
   const [addSfx, setAddSfx] = useState(true);
-  
-  const wsRef = useRef<WebSocket | null>(null);
 
+  const planWsRef = useRef<WebSocket | null>(null);
+  const rawWsRef = useRef<WebSocket | null>(null);
+
+  // Load trend ideas on mount
   useEffect(() => {
-    if (!jobId) return;
+    fetch("http://localhost:8008/api/director/trends?niche=technology&count=3")
+      .then(res => res.json())
+      .then(data => {
+        if (data.opportunities) {
+          setTrends(data.opportunities);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
-    const ws = new WebSocket(`ws://localhost:8008/api/generate/ws/${jobId}`);
-    wsRef.current = ws;
+  // Storyboard WebSocket
+  useEffect(() => {
+    if (!planJobId) return;
+
+    const ws = new WebSocket(`ws://localhost:8008/api/generate/ws/${planJobId}`);
+    planWsRef.current = ws;
 
     ws.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
         if (data.type === "log") {
-          setLogMsg(data.message);
-          setProgress(data.progress * 100);
-          setLogs(prev => {
-            if (prev.length > 0 && prev[prev.length - 1].message === data.message) return prev;
-            return [...prev, { message: data.message, time: new Date().toLocaleTimeString() }];
-          });
+          setPlanLogMsg(data.message);
+          setPlanProgress(data.progress * 100);
+          setPlanLogs(prev => [...prev, { message: data.message, time: new Date().toLocaleTimeString() }]);
+        } else if (data.type === "plan_ready" || (data.type === "full_state" && data.result)) {
+          const res = data.data || (typeof data.result === "string" ? JSON.parse(data.result) : data.result);
+          if (res && res.scenes) {
+            setStoryboard(res);
+            setPlanningStatus("ready");
+            setPlanProgress(100);
+          }
+        } else if (data.type === "storyboard_updated") {
+          setStoryboard(data.data);
+        }
+      } catch (e) {
+        console.error("WS Parse error", e);
+      }
+    };
+
+    return () => {
+      ws.close();
+    };
+  }, [planJobId]);
+
+  // Raw footage WebSocket
+  useEffect(() => {
+    if (!rawJobId) return;
+
+    const ws = new WebSocket(`ws://localhost:8008/api/generate/ws/${rawJobId}`);
+    rawWsRef.current = ws;
+
+    ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.type === "log") {
+          setRawLogMsg(data.message);
+          setRawProgress(data.progress * 100);
+          setRawLogs(prev => [...prev, { message: data.message, time: new Date().toLocaleTimeString() }]);
         } else if (data.type === "update" || data.type === "full_state") {
           const state = data.data || data;
           if (state.status === "completed") {
-            setStatus("completed");
-            if (state.result) {
-              setFinalVideo(state.result);
-            }
+            setRawStatus("completed");
+            if (state.result) setFinalVideo(state.result);
           } else if (state.status === "failed") {
-            setStatus("failed");
-            setLogMsg(`Error: ${state.error}`);
-          }
-          if (data.type === "full_state") {
-            setProgress(state.progress * 100);
-            setLogMsg(state.step);
-            if (state.status === "completed" && state.result) {
-               setFinalVideo(state.result);
-            }
+            setRawStatus("failed");
+            setRawLogMsg(`Error: ${state.error}`);
           }
         }
       } catch (e) {
@@ -62,27 +143,130 @@ export default function DirectorModePage() {
     return () => {
       ws.close();
     };
-  }, [jobId]);
+  }, [rawJobId]);
 
-  const handleGenerate = async (e: React.FormEvent) => {
+  const handleStartPlanning = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!topic.trim()) {
+      alert("Please enter a content topic.");
+      return;
+    }
+
+    setPlanningStatus("planning");
+    setStoryboard(null);
+    setPlanProgress(5);
+    setPlanLogMsg("Starting Autonomous Creative Pipeline...");
+    setPlanLogs([{ message: `Analyzing topic: '${topic}'`, time: new Date().toLocaleTimeString() }]);
+
+    try {
+      const res = await fetch("http://localhost:8008/api/director/autonomous-plan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          topic,
+          duration_sec: targetDuration,
+          style: selectedStyle,
+          auto_approve: false
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        alert("Failed to queue autonomous plan: " + data.detail);
+        setPlanningStatus("idle");
+      } else {
+        setPlanJobId(data.job_id);
+      }
+    } catch (err) {
+      alert("API request failed.");
+      setPlanningStatus("idle");
+    }
+  };
+
+  const handleToggleLock = (sceneNumber: number) => {
+    if (!storyboard) return;
+    const updatedScenes = storyboard.scenes.map(s => 
+      s.scene_number === sceneNumber ? { ...s, locked: !s.locked } : s
+    );
+    setStoryboard({ ...storyboard, scenes: updatedScenes });
+  };
+
+  const handleSceneFieldChange = (sceneNumber: number, field: keyof Scene, value: any) => {
+    if (!storyboard) return;
+    const updatedScenes = storyboard.scenes.map(s => 
+      s.scene_number === sceneNumber ? { ...s, [field]: value } : s
+    );
+    setStoryboard({ ...storyboard, scenes: updatedScenes });
+  };
+
+  const handleSaveSceneEdits = async () => {
+    if (!storyboard || !planJobId) return;
+    setSavingScenes(true);
+    try {
+      const res = await fetch("http://localhost:8008/api/director/update-scenes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          job_id: planJobId,
+          scenes: storyboard.scenes
+        })
+      });
+      if (res.ok) {
+        alert("Storyboard changes saved successfully!");
+      }
+    } catch (err) {
+      alert("Failed to save changes.");
+    } finally {
+      setSavingScenes(false);
+    }
+  };
+
+  const handleRegenerateScene = async (sceneNumber: number) => {
+    if (!planJobId) return;
+    setRegeneratingSceneNum(sceneNumber);
+    try {
+      const res = await fetch("http://localhost:8008/api/director/regenerate-scene", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          job_id: planJobId,
+          scene_number: sceneNumber,
+          instruction: sceneInstruction || "Make this scene more dynamic, engaging and visually cinematic."
+        })
+      });
+      const data = await res.json();
+      if (res.ok && data.plan) {
+        setStoryboard(data.plan);
+        setActiveInstructionModalScene(null);
+        setSceneInstruction("");
+      } else {
+        alert("Scene regeneration failed: " + (data.detail || "Unknown error"));
+      }
+    } catch (err) {
+      alert("Failed to regenerate scene.");
+    } finally {
+      setRegeneratingSceneNum(null);
+    }
+  };
+
+  const handleRawProcess = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!url) {
       alert("Please enter a video URL");
       return;
     }
     
-    setStatus("processing");
+    setRawStatus("processing");
     setFinalVideo(null);
-    setProgress(0);
-    setLogMsg("Initializing Director Engine...");
-    setLogs([{ message: "Starting Director Mode...", time: new Date().toLocaleTimeString() }]);
+    setRawProgress(0);
+    setRawLogMsg("Initializing Director Engine...");
+    setRawLogs([{ message: "Starting Director Mode...", time: new Date().toLocaleTimeString() }]);
     
     try {
       const res = await fetch("http://localhost:8008/api/director/process", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 
-          url: url,
+          url,
           remove_silence: removeSilence,
           add_punch_ins: addPunchIns,
           add_sfx: addSfx
@@ -92,158 +276,487 @@ export default function DirectorModePage() {
       const data = await res.json();
       if (!res.ok) {
         alert("Failed to start director: " + data.detail);
-        setStatus("idle");
+        setRawStatus("idle");
       } else {
-        setJobId(data.job_id);
+        setRawJobId(data.job_id);
       }
     } catch (err) {
       alert("API Error");
-      setStatus("idle");
+      setRawStatus("idle");
     }
   };
 
   return (
-    <div className="max-w-[1400px] mx-auto animate-in fade-in duration-500 flex flex-col h-[calc(100vh-6rem)]">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-white tracking-tight flex items-center gap-3">
-          <Film className="h-8 w-8 text-[#66fcf1]" /> Director Mode
-        </h1>
-        <p className="text-zinc-400 mt-1">Autonomous AI video editor. Upload raw footage and let the AI edit it like MrBeast.</p>
+    <div className="max-w-[1500px] mx-auto animate-in fade-in duration-500 flex flex-col min-h-[calc(100vh-6rem)] pb-12">
+      
+      {/* Header & Mode Switcher */}
+      <div className="mb-8 flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-white/10 pb-6">
+        <div>
+          <h1 className="text-3xl font-black text-white tracking-tight flex items-center gap-3">
+            <Film className="h-8 w-8 text-[#66fcf1]" /> Autonomous AI Director & Storyboard
+          </h1>
+          <p className="text-zinc-400 mt-1">
+            Supervisory AI Director orchestrating deep research, multi-scene storyboarding, QA critique, and selective regeneration.
+          </p>
+        </div>
+
+        {/* Tab Switcher */}
+        <div className="flex bg-black/60 p-1.5 rounded-xl border border-white/10 self-start md:self-auto">
+          <button 
+            onClick={() => setActiveTab("storyboard")}
+            className={`px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2 ${
+              activeTab === "storyboard" 
+                ? "bg-[#66fcf1] text-black shadow-[0_0_15px_rgba(102,252,241,0.25)]" 
+                : "text-zinc-400 hover:text-white"
+            }`}
+          >
+            <Sparkles className="h-4 w-4" /> Autonomous Storyboard
+          </button>
+          <button 
+            onClick={() => setActiveTab("raw")}
+            className={`px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2 ${
+              activeTab === "raw" 
+                ? "bg-[#66fcf1] text-black shadow-[0_0_15px_rgba(102,252,241,0.25)]" 
+                : "text-zinc-400 hover:text-white"
+            }`}
+          >
+            <Sliders className="h-4 w-4" /> Raw Footage Auto-Editor
+          </button>
+        </div>
       </div>
 
-      <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-8 overflow-hidden">
-        
-        {/* Left Side: Input & Progress */}
-        <div className="lg:col-span-5 flex flex-col space-y-6">
-          <div className="glass-card p-6">
-            <form onSubmit={handleGenerate} className="space-y-6">
-              <div>
-                <label className="block text-xs font-bold text-zinc-500 mb-2 uppercase tracking-wider flex items-center gap-2">
-                  <Upload className="h-4 w-4" /> Raw Video URL (YouTube or Direct Link)
+      {/* TAB 1: Autonomous Storyboard Director */}
+      {activeTab === "storyboard" && (
+        <div className="space-y-8">
+          
+          {/* Top Panel: Topic & Style Input */}
+          <div className="glass-card p-6 border border-white/10 shadow-2xl">
+            <form onSubmit={handleStartPlanning} className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-end">
+              
+              <div className="lg:col-span-6">
+                <label className="block text-xs font-bold text-zinc-400 mb-2 uppercase tracking-wider flex items-center gap-2">
+                  <Sparkles className="h-4 w-4 text-[#66fcf1]" /> Video Concept or Prompt
                 </label>
                 <input 
                   type="text" 
-                  value={url}
-                  onChange={e => setUrl(e.target.value)}
-                  placeholder="https://..."
-                  className="modern-input"
-                  disabled={status === "processing"}
+                  value={topic}
+                  onChange={e => setTopic(e.target.value)}
+                  placeholder="e.g. The Quantum Computing Breakthrough No One Is Talking About..."
+                  className="modern-input text-base"
+                  disabled={planningStatus === "planning"}
                 />
+
+                {/* Viral Trend Quick Picks */}
+                {trends.length > 0 && (
+                  <div className="flex items-center gap-2 mt-3 flex-wrap">
+                    <span className="text-[11px] text-zinc-500 font-bold flex items-center gap-1 uppercase">
+                      <Flame className="h-3 w-3 text-orange-400" /> Hot Trends:
+                    </span>
+                    {trends.map((t, idx) => (
+                      <button
+                        key={idx}
+                        type="button"
+                        onClick={() => setTopic(t.title)}
+                        className="text-xs px-2.5 py-1 bg-white/5 hover:bg-white/10 text-zinc-300 rounded-md border border-white/5 transition-all text-left truncate max-w-[280px]"
+                      >
+                        {t.title}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
 
-              <div className="space-y-3 pt-2">
-                <label className="block text-xs font-bold text-zinc-500 mb-2 uppercase tracking-wider flex items-center gap-2">
-                  <Settings2 className="h-4 w-4" /> Editing Directives
+              <div className="lg:col-span-2">
+                <label className="block text-xs font-bold text-zinc-400 mb-2 uppercase tracking-wider flex items-center gap-2">
+                  <Clock className="h-4 w-4 text-[#66fcf1]" /> Target Length
                 </label>
-                
-                <label className="flex items-center gap-3 p-3 bg-black/40 border border-white/5 rounded-xl cursor-pointer hover:bg-white/5 transition-all">
-                  <input type="checkbox" checked={removeSilence} onChange={e => setRemoveSilence(e.target.checked)} className="w-4 h-4 accent-[#66fcf1]" disabled={status === "processing"} />
-                  <div className="flex-1">
-                    <p className="text-sm font-bold text-white">Silence & Umm Removal</p>
-                    <p className="text-xs text-zinc-500">Automatically trims dead air for hyper-fast pacing.</p>
-                  </div>
-                  <FileAudio className="h-5 w-5 text-zinc-600" />
-                </label>
-
-                <label className="flex items-center gap-3 p-3 bg-black/40 border border-white/5 rounded-xl cursor-pointer hover:bg-white/5 transition-all">
-                  <input type="checkbox" checked={addPunchIns} onChange={e => setAddPunchIns(e.target.checked)} className="w-4 h-4 accent-[#66fcf1]" disabled={status === "processing"} />
-                  <div className="flex-1">
-                    <p className="text-sm font-bold text-white">Dynamic Punch-ins</p>
-                    <p className="text-xs text-zinc-500">Auto-zooms camera on high-impact sentences.</p>
-                  </div>
-                  <Film className="h-5 w-5 text-zinc-600" />
-                </label>
-
-                <label className="flex items-center gap-3 p-3 bg-black/40 border border-white/5 rounded-xl cursor-pointer hover:bg-white/5 transition-all">
-                  <input type="checkbox" checked={addSfx} onChange={e => setAddSfx(e.target.checked)} className="w-4 h-4 accent-[#66fcf1]" disabled={status === "processing"} />
-                  <div className="flex-1">
-                    <p className="text-sm font-bold text-white">Keyword Sound Effects</p>
-                    <p className="text-xs text-zinc-500">Injects swoosh and pop sounds to emphasize text.</p>
-                  </div>
-                  <Wand2 className="h-5 w-5 text-zinc-600" />
-                </label>
+                <select 
+                  value={targetDuration}
+                  onChange={e => setTargetDuration(Number(e.target.value))}
+                  className="modern-input"
+                  disabled={planningStatus === "planning"}
+                >
+                  <option value={30}>30s (Short)</option>
+                  <option value={45}>45s (Standard)</option>
+                  <option value={60}>60s (Deep-dive)</option>
+                </select>
               </div>
 
-              <div className="pt-4">
-                {status === "processing" ? (
-                  <button type="button" disabled className="w-full py-4 bg-white/20 text-white font-bold rounded-xl flex items-center justify-center gap-2 cursor-not-allowed">
-                    <Loader2 className="h-5 w-5 animate-spin" /> Auto-Editing Video...
+              <div className="lg:col-span-2">
+                <label className="block text-xs font-bold text-zinc-400 mb-2 uppercase tracking-wider flex items-center gap-2">
+                  <Film className="h-4 w-4 text-[#66fcf1]" /> Directing Style
+                </label>
+                <select 
+                  value={selectedStyle}
+                  onChange={e => setSelectedStyle(e.target.value)}
+                  className="modern-input"
+                  disabled={planningStatus === "planning"}
+                >
+                  <option value="Cinematic Documentary">Cinematic Documentary</option>
+                  <option value="MrBeast Fast Paced">MrBeast Fast Paced</option>
+                  <option value="Hormozi Explainer">Hormozi Explainer</option>
+                  <option value="Minimalist Tech">Minimalist Tech</option>
+                  <option value="Dark Storytelling">Dark Storytelling</option>
+                </select>
+              </div>
+
+              <div className="lg:col-span-2">
+                {planningStatus === "planning" ? (
+                  <button type="button" disabled className="w-full py-3.5 bg-white/10 text-white font-bold rounded-xl flex items-center justify-center gap-2 cursor-not-allowed">
+                    <Loader2 className="h-5 w-5 animate-spin" /> Orchestrating...
                   </button>
                 ) : (
-                  <button type="submit" className="w-full py-4 bg-[#66fcf1] text-black font-bold rounded-xl hover:bg-[#45f3e5] transition-all shadow-[0_0_20px_rgba(102,252,241,0.3)] flex items-center justify-center gap-2">
-                    <Wand2 className="h-5 w-5" /> Start Director Mode
+                  <button type="submit" className="w-full py-3.5 bg-[#66fcf1] hover:bg-[#45f3e5] text-black font-bold rounded-xl transition-all shadow-[0_0_20px_rgba(102,252,241,0.25)] flex items-center justify-center gap-2">
+                    <Wand2 className="h-5 w-5" /> Direct Storyboard
                   </button>
                 )}
               </div>
+
             </form>
           </div>
 
-          {status !== "idle" && (
-            <div className="glass-card p-6 flex flex-col gap-4 flex-1">
-              <h2 className="text-xs font-bold text-white uppercase tracking-widest border-b border-white/10 pb-3">
-                Live Timeline
-              </h2>
-              <div className="flex-1 flex flex-col justify-center gap-6">
-                <div className="text-center">
-                  <p className="text-4xl font-black text-white">{Math.round(progress)}%</p>
-                  <p className="text-sm text-[#66fcf1] mt-2 font-medium">{logMsg}</p>
+          {/* Planning Progress Display */}
+          {planningStatus === "planning" && (
+            <div className="glass-card p-6 border border-[#66fcf1]/30 animate-pulse">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-3">
+                  <Loader2 className="h-5 w-5 text-[#66fcf1] animate-spin" />
+                  <span className="text-sm font-bold text-white uppercase tracking-wider">AI Director Thinking: {planLogMsg}</span>
                 </div>
-                
-                <div className="w-full h-2 bg-white/5 rounded-full overflow-hidden">
-                  <div 
-                    className="h-full bg-gradient-to-r from-[#66fcf1] to-[#45f3e5] transition-all duration-300"
-                    style={{ width: `${progress}%` }}
-                  />
-                </div>
-                
-                <div className="mt-4 flex-1 bg-black/40 rounded-xl p-4 overflow-y-auto border border-white/5 space-y-2 max-h-[150px]">
-                  {logs.map((log, i) => (
-                    <div key={i} className="flex gap-3 text-xs font-mono text-zinc-400">
-                      <span className="text-zinc-600">[{log.time}]</span>
-                      <span className={i === logs.length - 1 ? "text-[#66fcf1]" : ""}>{log.message}</span>
-                    </div>
-                  ))}
-                </div>
+                <span className="text-lg font-black text-[#66fcf1]">{Math.round(planProgress)}%</span>
+              </div>
+              <div className="w-full h-2 bg-black/60 rounded-full overflow-hidden">
+                <div className="h-full bg-gradient-to-r from-[#66fcf1] to-[#45f3e5] transition-all duration-300" style={{ width: `${planProgress}%` }} />
+              </div>
+              <div className="mt-4 bg-black/40 rounded-xl p-3 max-h-32 overflow-y-auto space-y-1 font-mono text-xs text-zinc-400 border border-white/5">
+                {planLogs.map((l, i) => (
+                  <div key={i} className="flex gap-2">
+                    <span className="text-zinc-600">[{l.time}]</span>
+                    <span>{l.message}</span>
+                  </div>
+                ))}
               </div>
             </div>
           )}
-        </div>
 
-        {/* Right Side: Results */}
-        <div className="lg:col-span-7 flex flex-col">
-          <div className="glass-card p-6 flex-1 flex flex-col overflow-hidden">
-            <h2 className="text-xs font-bold text-white uppercase tracking-widest border-b border-white/10 pb-3 mb-6 flex justify-between items-center">
-              <span>Final Edited Video</span>
-            </h2>
-            
-            <div className="flex-1 flex flex-col items-center justify-center h-full">
-              {!finalVideo ? (
-                <div className="text-zinc-500 flex-col gap-4 flex items-center">
-                  <Film className="h-12 w-12 opacity-20" />
-                  <p>Awaiting raw footage...</p>
+          {/* Storyboard Cards & Controls */}
+          {storyboard && (
+            <div className="space-y-6">
+              
+              {/* Storyboard Header Banner */}
+              <div className="glass-card p-6 flex flex-col md:flex-row md:items-center justify-between gap-4 border border-white/10">
+                <div>
+                  <div className="flex items-center gap-3">
+                    <span className="px-2.5 py-1 bg-[#66fcf1]/10 text-[#66fcf1] border border-[#66fcf1]/30 rounded-md text-xs font-black uppercase">
+                      {storyboard.style}
+                    </span>
+                    <span className="px-2.5 py-1 bg-green-500/10 text-green-400 border border-green-500/30 rounded-md text-xs font-black flex items-center gap-1">
+                      <CheckCircle2 className="h-3.5 w-3.5" /> QA Score: {storyboard.qa_score ?? 92}/100
+                    </span>
+                    <span className="text-xs text-zinc-400">Target: {storyboard.duration}s</span>
+                  </div>
+                  <h2 className="text-2xl font-black text-white mt-2">{storyboard.title}</h2>
+                  <p className="text-sm text-zinc-400 mt-1 italic">Hook: "{storyboard.hook}"</p>
                 </div>
-              ) : (
-                <div className="w-full max-w-2xl mx-auto flex flex-col gap-6">
-                  <div className="aspect-video bg-black rounded-xl border border-white/10 overflow-hidden relative shadow-2xl">
-                    <video 
-                      src={`http://localhost:8008/api/generate/media?path=${encodeURIComponent(finalVideo.replace(/\\/g, '/'))}`} 
-                      controls 
-                      className="w-full h-full object-cover"
+
+                <div className="flex items-center gap-3">
+                  <button 
+                    onClick={handleSaveSceneEdits}
+                    disabled={savingScenes}
+                    className="px-4 py-2.5 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-bold flex items-center gap-2 border border-white/10 transition-all"
+                  >
+                    <Save className="h-4 w-4" /> Save Scene Edits
+                  </button>
+                  <button 
+                    onClick={() => alert("Scene plan confirmed! The rendering pipeline will generate narration voiceovers, synchronized visuals, dynamic cuts, and broadcast-normalized audio.")}
+                    className="px-6 py-2.5 bg-[#66fcf1] hover:bg-[#45f3e5] text-black font-black rounded-xl text-xs flex items-center gap-2 shadow-[0_0_15px_rgba(102,252,241,0.3)] transition-all"
+                  >
+                    <Play className="h-4 w-4" /> Approve & Render Master Video
+                  </button>
+                </div>
+              </div>
+
+              {/* Storyboard Scene Cards Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {storyboard.scenes.map((scene) => (
+                  <div 
+                    key={scene.scene_number} 
+                    className={`glass-card p-5 border transition-all flex flex-col justify-between ${
+                      scene.locked 
+                        ? "border-[#66fcf1]/40 shadow-[0_0_20px_rgba(102,252,241,0.1)] bg-gradient-to-b from-[#66fcf1]/5 to-transparent" 
+                        : "border-white/10 hover:border-white/20"
+                    }`}
+                  >
+                    {/* Scene Card Header */}
+                    <div>
+                      <div className="flex items-center justify-between pb-3 border-b border-white/5 mb-3">
+                        <div className="flex items-center gap-2">
+                          <span className="px-2 py-0.5 bg-white/10 rounded text-xs font-mono font-bold text-white">
+                            Scene {scene.scene_number}
+                          </span>
+                          <span className="text-xs text-zinc-400 font-medium">
+                            ~{scene.duration_estimate_sec}s
+                          </span>
+                          <span className="px-2 py-0.5 bg-purple-500/20 text-purple-300 rounded text-[10px] font-bold uppercase">
+                            {scene.camera_framing}
+                          </span>
+                        </div>
+
+                        {/* Lock / Unlock Button */}
+                        <button 
+                          onClick={() => handleToggleLock(scene.scene_number)}
+                          className={`p-1.5 rounded-lg text-xs transition-all ${
+                            scene.locked 
+                              ? "bg-[#66fcf1] text-black" 
+                              : "bg-white/5 text-zinc-400 hover:text-white hover:bg-white/10"
+                          }`}
+                          title={scene.locked ? "Locked: Agent will not overwrite" : "Click to lock scene"}
+                        >
+                          {scene.locked ? <Lock className="h-3.5 w-3.5" /> : <Unlock className="h-3.5 w-3.5" />}
+                        </button>
+                      </div>
+
+                      {/* Script Narration */}
+                      <div className="space-y-3">
+                        <div>
+                          <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider block mb-1">
+                            Spoken Script (Narration)
+                          </label>
+                          <textarea 
+                            value={scene.narration}
+                            onChange={(e) => handleSceneFieldChange(scene.scene_number, "narration", e.target.value)}
+                            rows={3}
+                            className="w-full bg-black/40 border border-white/5 rounded-lg p-2.5 text-xs text-white focus:outline-none focus:border-[#66fcf1]/50 resize-none font-medium leading-relaxed"
+                          />
+                        </div>
+
+                        {/* Visual Description */}
+                        <div>
+                          <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider block mb-1">
+                            Visual Prompt & Direction
+                          </label>
+                          <textarea 
+                            value={scene.visual_description}
+                            onChange={(e) => handleSceneFieldChange(scene.scene_number, "visual_description", e.target.value)}
+                            rows={3}
+                            className="w-full bg-black/40 border border-white/5 rounded-lg p-2.5 text-xs text-zinc-300 focus:outline-none focus:border-[#66fcf1]/50 resize-none leading-relaxed"
+                          />
+                        </div>
+
+                        {/* Metadata Tags */}
+                        <div className="flex items-center gap-2 flex-wrap pt-1">
+                          {scene.music_cue && (
+                            <span className="text-[10px] bg-blue-500/10 text-blue-300 border border-blue-500/20 px-2 py-0.5 rounded">
+                              🎵 {scene.music_cue}
+                            </span>
+                          )}
+                          {scene.sfx_cue && (
+                            <span className="text-[10px] bg-yellow-500/10 text-yellow-300 border border-yellow-500/20 px-2 py-0.5 rounded">
+                              💥 {scene.sfx_cue}
+                            </span>
+                          )}
+                          {scene.broll_query && (
+                            <span className="text-[10px] bg-zinc-800 text-zinc-400 px-2 py-0.5 rounded">
+                              🔍 {scene.broll_query}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Scene Action Footer */}
+                    <div className="pt-4 mt-3 border-t border-white/5">
+                      {activeInstructionModalScene === scene.scene_number ? (
+                        <div className="space-y-2 bg-black/60 p-2.5 rounded-lg border border-[#66fcf1]/30">
+                          <input 
+                            type="text" 
+                            value={sceneInstruction}
+                            onChange={(e) => setSceneInstruction(e.target.value)}
+                            placeholder="e.g. Add drone wide shot, more suspense..."
+                            className="w-full bg-black border border-white/10 rounded px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-[#66fcf1]"
+                            autoFocus
+                          />
+                          <div className="flex items-center gap-2">
+                            <button 
+                              onClick={() => handleRegenerateScene(scene.scene_number)}
+                              disabled={regeneratingSceneNum === scene.scene_number}
+                              className="flex-1 py-1.5 bg-[#66fcf1] hover:bg-[#45f3e5] text-black font-bold rounded text-xs flex items-center justify-center gap-1"
+                            >
+                              {regeneratingSceneNum === scene.scene_number ? (
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                              ) : (
+                                <RefreshCw className="h-3 w-3" />
+                              )}
+                              Regenerate
+                            </button>
+                            <button 
+                              onClick={() => setActiveInstructionModalScene(null)}
+                              className="px-2.5 py-1.5 bg-white/10 hover:bg-white/20 text-zinc-300 rounded text-xs"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <button 
+                          onClick={() => {
+                            setActiveInstructionModalScene(scene.scene_number);
+                            setSceneInstruction("");
+                          }}
+                          className="w-full py-2 bg-white/5 hover:bg-white/10 text-zinc-300 hover:text-white rounded-lg text-xs font-bold border border-white/5 flex items-center justify-center gap-1.5 transition-all"
+                        >
+                          <RefreshCw className="h-3.5 w-3.5 text-[#66fcf1]" /> Regenerate Scene
+                        </button>
+                      )}
+                    </div>
+
+                  </div>
+                ))}
+              </div>
+
+            </div>
+          )}
+
+        </div>
+      )}
+
+      {/* TAB 2: Raw Video Auto-Editor */}
+      {activeTab === "raw" && (
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 overflow-hidden">
+          
+          {/* Left Side: Input & Settings */}
+          <div className="lg:col-span-5 flex flex-col space-y-6">
+            <div className="glass-card p-6">
+              <form onSubmit={handleRawProcess} className="space-y-6">
+                <div>
+                  <label className="block text-xs font-bold text-zinc-400 mb-2 uppercase tracking-wider flex items-center gap-2">
+                    <Upload className="h-4 w-4" /> Raw Video URL (YouTube or Direct Link)
+                  </label>
+                  <input 
+                    type="text" 
+                    value={url}
+                    onChange={e => setUrl(e.target.value)}
+                    placeholder="https://..."
+                    className="modern-input"
+                    disabled={rawStatus === "processing"}
+                  />
+                </div>
+
+                <div className="space-y-3 pt-2">
+                  <label className="block text-xs font-bold text-zinc-400 mb-2 uppercase tracking-wider flex items-center gap-2">
+                    <Settings2 className="h-4 w-4" /> Editing Directives
+                  </label>
+                  
+                  <label className="flex items-center gap-3 p-3 bg-black/40 border border-white/5 rounded-xl cursor-pointer hover:bg-white/5 transition-all">
+                    <input type="checkbox" checked={removeSilence} onChange={e => setRemoveSilence(e.target.checked)} className="w-4 h-4 accent-[#66fcf1]" disabled={rawStatus === "processing"} />
+                    <div className="flex-1">
+                      <p className="text-sm font-bold text-white">Silence & Dead Air Removal</p>
+                      <p className="text-xs text-zinc-500">Automatically trims pauses for hyper-fast engagement.</p>
+                    </div>
+                    <FileAudio className="h-5 w-5 text-zinc-600" />
+                  </label>
+
+                  <label className="flex items-center gap-3 p-3 bg-black/40 border border-white/5 rounded-xl cursor-pointer hover:bg-white/5 transition-all">
+                    <input type="checkbox" checked={addPunchIns} onChange={e => setAddPunchIns(e.target.checked)} className="w-4 h-4 accent-[#66fcf1]" disabled={rawStatus === "processing"} />
+                    <div className="flex-1">
+                      <p className="text-sm font-bold text-white">Dynamic Punch-ins</p>
+                      <p className="text-xs text-zinc-500">Auto-zooms camera on high-impact sentences.</p>
+                    </div>
+                    <Film className="h-5 w-5 text-zinc-600" />
+                  </label>
+
+                  <label className="flex items-center gap-3 p-3 bg-black/40 border border-white/5 rounded-xl cursor-pointer hover:bg-white/5 transition-all">
+                    <input type="checkbox" checked={addSfx} onChange={e => setAddSfx(e.target.checked)} className="w-4 h-4 accent-[#66fcf1]" disabled={rawStatus === "processing"} />
+                    <div className="flex-1">
+                      <p className="text-sm font-bold text-white">Keyword Sound Effects & -14 LUFS Mastering</p>
+                      <p className="text-xs text-zinc-500">Injects swoosh sounds and applies broadcast audio mastering.</p>
+                    </div>
+                    <Wand2 className="h-5 w-5 text-zinc-600" />
+                  </label>
+                </div>
+
+                <div className="pt-4">
+                  {rawStatus === "processing" ? (
+                    <button type="button" disabled className="w-full py-4 bg-white/20 text-white font-bold rounded-xl flex items-center justify-center gap-2 cursor-not-allowed">
+                      <Loader2 className="h-5 w-5 animate-spin" /> Auto-Editing Video...
+                    </button>
+                  ) : (
+                    <button type="submit" className="w-full py-4 bg-[#66fcf1] text-black font-bold rounded-xl hover:bg-[#45f3e5] transition-all shadow-[0_0_20px_rgba(102,252,241,0.3)] flex items-center justify-center gap-2">
+                      <Wand2 className="h-5 w-5" /> Start Director Mode
+                    </button>
+                  )}
+                </div>
+              </form>
+            </div>
+
+            {rawStatus !== "idle" && (
+              <div className="glass-card p-6 flex flex-col gap-4 flex-1">
+                <h2 className="text-xs font-bold text-white uppercase tracking-widest border-b border-white/10 pb-3">
+                  Live Timeline
+                </h2>
+                <div className="flex-1 flex flex-col justify-center gap-6">
+                  <div className="text-center">
+                    <p className="text-4xl font-black text-white">{Math.round(rawProgress)}%</p>
+                    <p className="text-sm text-[#66fcf1] mt-2 font-medium">{rawLogMsg}</p>
+                  </div>
+                  
+                  <div className="w-full h-2 bg-white/5 rounded-full overflow-hidden">
+                    <div 
+                      className="h-full bg-gradient-to-r from-[#66fcf1] to-[#45f3e5] transition-all duration-300"
+                      style={{ width: `${rawProgress}%` }}
                     />
                   </div>
                   
-                  <div className="flex items-center gap-3">
-                    <a href={`http://localhost:8008/api/generate/media?path=${encodeURIComponent(finalVideo.replace(/\\/g, '/'))}`} download className="flex-1 py-4 bg-[#66fcf1] hover:bg-[#45f3e5] text-black rounded-xl flex items-center justify-center gap-2 text-sm font-bold transition-all shadow-[0_0_15px_rgba(102,252,241,0.2)]">
-                      <Download className="h-5 w-5" /> Download Final Master
-                    </a>
+                  <div className="mt-4 flex-1 bg-black/40 rounded-xl p-4 overflow-y-auto border border-white/5 space-y-2 max-h-[150px]">
+                    {rawLogs.map((log, i) => (
+                      <div key={i} className="flex gap-3 text-xs font-mono text-zinc-400">
+                        <span className="text-zinc-600">[{log.time}]</span>
+                        <span className={i === rawLogs.length - 1 ? "text-[#66fcf1]" : ""}>{log.message}</span>
+                      </div>
+                    ))}
                   </div>
                 </div>
-              )}
+              </div>
+            )}
+          </div>
+
+          {/* Right Side: Results */}
+          <div className="lg:col-span-7 flex flex-col">
+            <div className="glass-card p-6 flex-1 flex flex-col overflow-hidden">
+              <h2 className="text-xs font-bold text-white uppercase tracking-widest border-b border-white/10 pb-3 mb-6 flex justify-between items-center">
+                <span>Final Edited Video</span>
+              </h2>
+              
+              <div className="flex-1 flex flex-col items-center justify-center h-full">
+                {!finalVideo ? (
+                  <div className="text-zinc-500 flex-col gap-4 flex items-center">
+                    <Film className="h-12 w-12 opacity-20" />
+                    <p>Awaiting raw footage...</p>
+                  </div>
+                ) : (
+                  <div className="w-full max-w-2xl mx-auto flex flex-col gap-6">
+                    <div className="aspect-video bg-black rounded-xl border border-white/10 overflow-hidden relative shadow-2xl">
+                      <video 
+                        src={`http://localhost:8008/api/generate/media?path=${encodeURIComponent(finalVideo.replace(/\\/g, '/'))}`} 
+                        controls 
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                    
+                    <div className="flex items-center gap-3">
+                      <a href={`http://localhost:8008/api/generate/media?path=${encodeURIComponent(finalVideo.replace(/\\/g, '/'))}`} download className="flex-1 py-4 bg-[#66fcf1] hover:bg-[#45f3e5] text-black rounded-xl flex items-center justify-center gap-2 text-sm font-bold transition-all shadow-[0_0_15px_rgba(102,252,241,0.2)]">
+                        <Download className="h-5 w-5" /> Download Final Master
+                      </a>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
-        </div>
 
-      </div>
+        </div>
+      )}
+
     </div>
   );
 }

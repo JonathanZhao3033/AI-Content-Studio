@@ -10,7 +10,38 @@ import logging
 
 CONFIG_FILE = "config.json"
 
-def load_config():
+SENSITIVE_KEYS = {
+    "GEMINI_API_KEY",
+    "WAVESPEED_API_KEY",
+    "WAVESPEED_AI_KEY",
+    "NEWS_API_KEY",
+    "PIXABAY_API_KEY",
+    "YOUTUBE_CLIENT_SECRET",
+    "FACEBOOK_ACCESS_TOKEN",
+    "JWT_SECRET",
+    "API_AUTH_TOKEN"
+}
+
+def mask_secret(value: str) -> str:
+    """Masks secret values to prevent exposure while allowing recognition."""
+    if not value or not isinstance(value, str):
+        return ""
+    val = value.strip()
+    if len(val) <= 6:
+        return "******"
+    return f"{val[:3]}****{val[-3:]}"
+
+def is_masked_value(value: str) -> bool:
+    """Checks if a string represents an already-masked secret."""
+    if not isinstance(value, str):
+        return False
+    return "****" in value
+
+def load_config(masked: bool = False):
+    """
+    Loads config with environment variable fallbacks.
+    If masked=True, all sensitive API keys and tokens are masked.
+    """
     if os.path.exists(CONFIG_FILE):
         try:
             with open(CONFIG_FILE, "r", encoding="utf-8") as f:
@@ -83,17 +114,45 @@ def load_config():
         if key not in config_data:
             config_data[key] = value
             config_updated = True
-    
+
+    # Support Environment Variables for sensitive keys if not set in config
+    for key in SENSITIVE_KEYS:
+        env_val = os.getenv(key)
+        if env_val and not config_data.get(key):
+            config_data[key] = env_val
+
     if config_updated:
         logging.info("Configuration updated with new default values. Saving.")
         save_config(config_data)
+
+    if masked:
+        masked_data = dict(config_data)
+        for key in SENSITIVE_KEYS:
+            if key in masked_data and masked_data[key]:
+                masked_data[key] = mask_secret(masked_data[key])
+        return masked_data
 
     return config_data
 
 def save_config(config, config_path=CONFIG_FILE):
     try:
-        with open(config_path, 'w') as f:
-            json.dump(config, f, indent=4)
+        # Prevent saving masked strings back into configuration file
+        existing = {}
+        if os.path.exists(config_path):
+            try:
+                with open(config_path, "r", encoding="utf-8") as f:
+                    existing = json.load(f)
+            except Exception:
+                existing = {}
+
+        cleaned_config = dict(config)
+        for key in SENSITIVE_KEYS:
+            if key in cleaned_config and is_masked_value(cleaned_config[key]):
+                # Retain the unmasked secret from existing config if available
+                cleaned_config[key] = existing.get(key, "")
+
+        with open(config_path, 'w', encoding="utf-8") as f:
+            json.dump(cleaned_config, f, indent=4)
         logging.info(f"Configuration saved to {config_path}")
     except Exception as e:
         logging.error(f"Error saving config: {e}")

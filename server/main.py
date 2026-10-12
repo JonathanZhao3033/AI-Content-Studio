@@ -23,12 +23,23 @@ from server.core.scheduler import start_scheduler
 def on_startup():
     start_scheduler()
 
-# Allow Next.js frontend to talk to this API
+# Restricted CORS configuration
+cors_origins_env = os.getenv("CORS_ORIGINS", "")
+if cors_origins_env:
+    allowed_origins = [orig.strip() for orig in cors_origins_env.split(",") if orig.strip()]
+else:
+    allowed_origins = [
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://localhost:8008",
+        "http://127.0.0.1:8008"
+    ]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], # In production, restrict this to the frontend URL
+    allow_origins=allowed_origins,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
 
@@ -65,15 +76,22 @@ app.include_router(campaigns.router, prefix="/api/campaigns", tags=["Campaigns"]
 from server.routers import social
 app.include_router(social.router, prefix="/api/social", tags=["Social"])
 
+from server.routers import style
+app.include_router(style.router, prefix="/api/styles", tags=["Style Engine"])
+
+from server.routers import timeline
+app.include_router(timeline.router, prefix="/api/timeline", tags=["Timeline Editor"])
+
 from config import load_config, save_config
 
 @app.get("/api/config")
 def get_config():
-    return load_config()
+    # Never expose unmasked secrets to the browser
+    return load_config(masked=True)
 
 @app.post("/api/config")
 def update_config(new_config: dict):
-    # Load current config to ensure we don't overwrite everything blindly
+    # Load current config to merge updates safely without clobbering with masked placeholders
     current = load_config()
     current.update(new_config)
     save_config(current)
