@@ -17,3 +17,5 @@ requests
 opencv-python
 numpy
 playwright
+sqlalchemy
+pytest

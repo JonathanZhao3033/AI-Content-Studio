@@ -1,6 +1,6 @@
 "use client";
 
-import { Video, Clock, TrendingUp, Sparkles, Plus, Play, Scissors, Film, ArrowRight, Activity, CalendarDays, MoreHorizontal } from "lucide-react";
+import { Video, Clock, TrendingUp, Sparkles, Plus, Play, Scissors, Film, ArrowRight, Activity, CalendarDays, MoreHorizontal, Palette, Bot } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
@@ -43,25 +43,30 @@ export default function Dashboard() {
       {/* Quick Action Hub */}
       <div>
         <h2 className="text-sm font-bold text-white uppercase tracking-widest mb-4 flex items-center gap-2">
-          <Activity className="h-4 w-4 text-[var(--accent)]" /> Launchpad
+          <Activity className="h-4 w-4 text-[var(--accent)]" /> Next-Gen Studio Launchpad
         </h2>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
           {[
-            { title: "Quick Creator", desc: "AI script to full video in 2 mins", icon: Video, href: "/studio", color: "text-[var(--accent)]" },
-            { title: "Magic Clipper", desc: "Extract viral shorts from podcasts", icon: Scissors, href: "/clipper", color: "text-[#fca311]" },
-            { title: "Director Mode", desc: "Fine-tune and edit timelines", icon: Film, href: "/director", color: "text-[#ff00ff]" },
+            { title: "Autonomous Director", desc: "Storyboard scenes, QA critique & selective regeneration", icon: Film, href: "/director", color: "text-[#66fcf1]" },
+            { title: "Magic AI Clipper 2.0", desc: "Multimodal audio peaks & visual scene change detection", icon: Scissors, href: "/clipper", color: "text-[#fca311]" },
+            { title: "Brand & Style Studio", desc: "Clone editing styles from reference videos & brand kit", icon: Palette, href: "/brand", color: "text-[#c084fc]" },
+            { title: "Multi-Track Studio", desc: "Nonlinear timeline with transcript ripple-editing", icon: Video, href: "/studio", color: "text-[#38bdf8]" },
+            { title: "Auto-Pilot Campaigns", desc: "Schedule 24/7 automated topic generation sequences", icon: Bot, href: "/campaigns", color: "text-[#34d399]" },
+            { title: "Smart Media Utilities", desc: "Auto-captioner, aspect ratio converter & neural TTS", icon: Sparkles, href: "/tools", color: "text-[#f43f5e]" },
           ].map((action, i) => (
-            <Link key={i} href={action.href} className="glass-card glass-card-hover p-6 flex flex-col group">
-              <div className="flex justify-between items-start mb-4">
-                <div className={`p-3 rounded-xl bg-white/5 border border-white/5 ${action.color}`}>
-                  <action.icon className="h-6 w-6" />
+            <Link key={i} href={action.href} className="glass-card glass-card-hover p-6 flex flex-col justify-between group">
+              <div>
+                <div className="flex justify-between items-start mb-4">
+                  <div className={`p-3 rounded-xl bg-white/5 border border-white/5 ${action.color}`}>
+                    <action.icon className="h-6 w-6" />
+                  </div>
+                  <div className="h-8 w-8 rounded-full bg-white/5 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all -translate-x-2 group-hover:translate-x-0">
+                    <ArrowRight className="h-4 w-4 text-white" />
+                  </div>
                 </div>
-                <div className="h-8 w-8 rounded-full bg-white/5 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all -translate-x-2 group-hover:translate-x-0">
-                  <ArrowRight className="h-4 w-4 text-white" />
-                </div>
+                <h3 className="text-lg font-bold text-white mb-1">{action.title}</h3>
+                <p className="text-xs text-zinc-400">{action.desc}</p>
               </div>
-              <h3 className="text-lg font-bold text-white mb-1">{action.title}</h3>
-              <p className="text-xs text-zinc-500">{action.desc}</p>
             </Link>
           ))}
         </div>
